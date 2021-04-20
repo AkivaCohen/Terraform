@@ -18,7 +18,7 @@ resource "azurerm_resource_group" "main" {
 }
 
 locals {
-  instance_count = 3
+  instance_count = 2
 }
 
 resource "azurerm_virtual_network" "main" {
@@ -33,14 +33,22 @@ resource "azurerm_subnet" "internal" {
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
+
+  enforce_private_link_endpoint_network_policies = true
 }
 
-
+# Create public IP
 resource "azurerm_public_ip" "pip" {
   name                = "${var.prefix}-pip"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   allocation_method   = "Static"
+}
+
+data "azurerm_public_ip" "ip" {
+  name                = azurerm_public_ip.pip.name
+  resource_group_name = azurerm_resource_group.main.name
+  depends_on          = [azurerm_lb.load_balancer]
 }
 
 resource "azurerm_network_interface" "main" {
@@ -57,7 +65,7 @@ resource "azurerm_network_interface" "main" {
 }
 
 resource "azurerm_availability_set" "avset" {
-  name                         = "${var.prefix}avset"
+  name                         = "${var.prefix}-avset"
   location                     = azurerm_resource_group.main.location
   resource_group_name          = azurerm_resource_group.main.name
   platform_fault_domain_count  = 2
@@ -72,31 +80,37 @@ resource "azurerm_network_security_group" "webserver" {
 }
 
 resource "azurerm_network_security_rule" "nsg_http" {
-name = "HTTP"
-priority = 100
-direction = "Inbound"
-access = "Allow"
-protocol = "TCP"
-source_port_range = "*"
-destination_port_range = "80"
-source_address_prefix = "*"
-destination_address_prefix = azurerm_subnet.internal.address_prefix
-network_security_group_name= azurerm_network_security_group.webserver.name
-resource_group_name = azurerm_resource_group.main.name
+  name = "HTTP"
+  priority = 100
+  direction = "Inbound"
+  access = "Allow"
+  protocol = "TCP"
+  source_port_range = "*"
+  destination_port_range = "80"
+  source_address_prefix = "*"
+  destination_address_prefix = azurerm_subnet.internal.address_prefix
+  network_security_group_name= azurerm_network_security_group.webserver.name
+  resource_group_name = azurerm_resource_group.main.name
 }
 
 resource "azurerm_network_security_rule" "nsg_ssh" {
-name = "SSH"
-priority = 200
-direction = "Inbound"
-access = "Allow"
-protocol = "TCP"
-source_port_range = "*"
-destination_port_range = "22"
-source_address_prefix = "*"
-destination_address_prefix = azurerm_subnet.internal.address_prefix
-network_security_group_name= azurerm_network_security_group.webserver.name
-resource_group_name = azurerm_resource_group.main.name
+  count                        = local.instance_count
+  name                         = "SSH-app-vm${count.index}"
+  priority                     = "20${count.index}"
+  direction                    = "Inbound"
+  access                       = "Allow"
+  protocol                     = "TCP"
+  source_port_range            = "*"
+  destination_port_range       = "22${count.index + 1}"
+  source_address_prefix        = "*"
+  destination_address_prefix   = azurerm_subnet.internal.address_prefix
+  network_security_group_name  = azurerm_network_security_group.webserver.name
+  resource_group_name          = azurerm_resource_group.main.name
+}
+
+resource "azurerm_subnet_network_security_group_association" "example" {
+  subnet_id                 = azurerm_subnet.internal.id
+  network_security_group_id = azurerm_network_security_group.webserver.id
 }
 
 resource "azurerm_lb" "load_balancer" {
@@ -116,15 +130,24 @@ resource "azurerm_lb_backend_address_pool" "example" {
   name                = "BackEndAddressPool"
 }
 
-# resource "azurerm_lb_nat_rule" "example" {
-#   resource_group_name            = azurerm_resource_group.main.name
-#   loadbalancer_id                = azurerm_lb.load_balancer.id
-#   name                           = "HTTPSAccess"
-#   protocol                       = "Tcp"
-#   frontend_port                  = 443
-#   backend_port                   = 443
-#   frontend_ip_configuration_name = azurerm_lb.load_balancer.frontend_ip_configuration[0].name
-# }
+resource "azurerm_lb_nat_rule" "example" {
+  count                   = local.instance_count
+  resource_group_name            = azurerm_resource_group.main.name
+  loadbalancer_id                = azurerm_lb.load_balancer.id
+  name                           = "SSHAccess-${count.index}"
+  protocol                       = "Tcp"
+  frontend_port                  = "22${count.index + 1}"
+  backend_port                   = 22
+  # frontend_ip_configuration_name = azurerm_lb.load_balancer.frontend_ip_configuration[0].name
+  frontend_ip_configuration_name = "PublicIPAddress"
+}
+
+resource "azurerm_network_interface_nat_rule_association" "example" {
+  count                 = local.instance_count
+  network_interface_id  = element(azurerm_network_interface.main.*.id, count.index)
+  ip_configuration_name = "primary"
+  nat_rule_id           = element(azurerm_lb_nat_rule.example.*.id, count.index)
+}
 
 resource "azurerm_network_interface_backend_address_pool_association" "example" {
   count                   = local.instance_count

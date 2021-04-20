@@ -29,3 +29,13 @@ variable "admin_username" {
 # variable "admin_password" {
 #   description = "administrator password (recommended to disable password auth)"
 # }
+
+variable "db_administrator_login" {
+  description = "The Administrator Login for the PostgreSQL Server. Changing this forces a new resource to be created."
+  type        = string
+}
+
+variable "db_administrator_password" {
+  description = "The Password associated with the administrator_login for the PostgreSQL Server."
+  type        = string
+}
