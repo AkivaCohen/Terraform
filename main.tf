@@ -18,7 +18,7 @@ resource "azurerm_resource_group" "main" {
 }
 
 locals {
-  instance_count = 2
+  instance_count = 1
 }
 
 resource "azurerm_virtual_network" "main" {
@@ -45,11 +45,11 @@ resource "azurerm_public_ip" "pip" {
   allocation_method   = "Static"
 }
 
-data "azurerm_public_ip" "ip" {
-  name                = azurerm_public_ip.pip.name
-  resource_group_name = azurerm_resource_group.main.name
-  depends_on          = [azurerm_lb.load_balancer]
-}
+# data "azurerm_public_ip" "ip" {
+#   name                = azurerm_public_ip.pip.name
+#   resource_group_name = azurerm_resource_group.main.name
+#   depends_on          = [azurerm_lb.load_balancer]
+# }
 
 resource "azurerm_network_interface" "main" {
   count               = local.instance_count
@@ -88,22 +88,21 @@ resource "azurerm_network_security_rule" "nsg_http" {
   source_port_range = "*"
   destination_port_range = "80"
   source_address_prefix = "*"
-  destination_address_prefix = azurerm_subnet.internal.address_prefix
+  destination_address_prefix = "*"
   network_security_group_name= azurerm_network_security_group.webserver.name
   resource_group_name = azurerm_resource_group.main.name
 }
 
 resource "azurerm_network_security_rule" "nsg_ssh" {
-  count                        = local.instance_count
-  name                         = "SSH-app-vm${count.index}"
-  priority                     = "20${count.index}"
+  name                         = "SSH"
+  priority                     = 200
   direction                    = "Inbound"
   access                       = "Allow"
   protocol                     = "TCP"
   source_port_range            = "*"
-  destination_port_range       = "22${count.index + 1}"
+  destination_port_range       = "22"
   source_address_prefix        = "*"
-  destination_address_prefix   = azurerm_subnet.internal.address_prefix
+  destination_address_prefix   = "*"
   network_security_group_name  = azurerm_network_security_group.webserver.name
   resource_group_name          = azurerm_resource_group.main.name
 }
@@ -131,22 +130,44 @@ resource "azurerm_lb_backend_address_pool" "example" {
 }
 
 resource "azurerm_lb_nat_rule" "example" {
-  count                   = local.instance_count
   resource_group_name            = azurerm_resource_group.main.name
   loadbalancer_id                = azurerm_lb.load_balancer.id
-  name                           = "SSHAccess-${count.index}"
+  name                           = "ssh"
   protocol                       = "Tcp"
-  frontend_port                  = "22${count.index + 1}"
+  frontend_port                  = 22
   backend_port                   = 22
-  # frontend_ip_configuration_name = azurerm_lb.load_balancer.frontend_ip_configuration[0].name
   frontend_ip_configuration_name = "PublicIPAddress"
 }
 
 resource "azurerm_network_interface_nat_rule_association" "example" {
-  count                 = local.instance_count
-  network_interface_id  = element(azurerm_network_interface.main.*.id, count.index)
+  network_interface_id  = azurerm_network_interface.main.0.id
   ip_configuration_name = "primary"
-  nat_rule_id           = element(azurerm_lb_nat_rule.example.*.id, count.index)
+  nat_rule_id           = azurerm_lb_nat_rule.example.id
+}
+
+resource "azurerm_lb_rule" "lb_rule" {
+  resource_group_name            = azurerm_resource_group.main.name
+  loadbalancer_id                = azurerm_lb.load_balancer.id
+  name                           = "LBRule"
+  protocol                       = "tcp"
+  frontend_port                  = 80
+  backend_port                   = 80
+  frontend_ip_configuration_name = "PublicIPAddress"
+  enable_floating_ip             = false
+  backend_address_pool_id        = azurerm_lb_backend_address_pool.example.id
+  idle_timeout_in_minutes        = 5
+  probe_id                       = azurerm_lb_probe.lb_probe.id
+  depends_on                     = [azurerm_lb_probe.lb_probe]
+}
+
+resource "azurerm_lb_probe" "lb_probe" {
+  resource_group_name = azurerm_resource_group.main.name
+  loadbalancer_id     = azurerm_lb.load_balancer.id
+  name                = "tcpProbe"
+  protocol            = "tcp"
+  port                = 80
+  interval_in_seconds = 5
+  number_of_probes    = 2
 }
 
 resource "azurerm_network_interface_backend_address_pool_association" "example" {
@@ -162,6 +183,7 @@ resource "random_password" "password" {
   override_special = "_%@"
 }
 
+# Create virtual machine
 resource "azurerm_linux_virtual_machine" "main" {
   count                           = local.instance_count
   name                            = "${var.prefix}-app-vm${count.index}"

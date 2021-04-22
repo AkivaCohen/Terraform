@@ -18,8 +18,6 @@ resource "azurerm_postgresql_server" "pgsql" {
   ssl_enforcement_enabled          = false
 }
 
-
-
 resource "azurerm_private_endpoint" "private_endpoint" {
   name                = "${var.prefix}-pgsql-endpoint"
   location            = var.location

@@ -1,7 +1,8 @@
 
 output "lb_public_ip" {
   description = "The IP of load balancer" 
-  value = data.azurerm_public_ip.ip.ip_address
+#   value = data.azurerm_public_ip.ip.ip_address
+  value = azurerm_public_ip.pip.*.ip_address
 }
 
 
