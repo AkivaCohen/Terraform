@@ -18,7 +18,7 @@ resource "azurerm_resource_group" "main" {
 }
 
 locals {
-  instance_count = 1
+  instance_count = 2
 }
 
 resource "azurerm_virtual_network" "main" {
@@ -151,7 +151,7 @@ resource "azurerm_lb_rule" "lb_rule" {
   name                           = "LBRule"
   protocol                       = "tcp"
   frontend_port                  = 80
-  backend_port                   = 80
+  backend_port                   = 8080
   frontend_ip_configuration_name = "PublicIPAddress"
   enable_floating_ip             = false
   backend_address_pool_id        = azurerm_lb_backend_address_pool.example.id
@@ -165,7 +165,7 @@ resource "azurerm_lb_probe" "lb_probe" {
   loadbalancer_id     = azurerm_lb.load_balancer.id
   name                = "tcpProbe"
   protocol            = "tcp"
-  port                = 80
+  port                = 8080
   interval_in_seconds = 5
   number_of_probes    = 2
 }
