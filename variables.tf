@@ -39,3 +39,8 @@ variable "db_administrator_password" {
   description = "The Password associated with the administrator_login for the PostgreSQL Server."
   type        = string
 }
+
+variable "subscription_id" {}
+variable "client_id " {}
+variable "client_secret" {}
+variable "tenant_id" {}
