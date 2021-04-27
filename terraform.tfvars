@@ -1,6 +1,6 @@
 
 resource_group = "week-04"
-location = "West Europe"
+location = "East US"
 vm_size = "Standard_B1s"
 admin_username = "ubuntu"
 

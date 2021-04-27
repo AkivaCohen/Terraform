@@ -94,13 +94,14 @@ resource "azurerm_network_security_rule" "nsg_http" {
 }
 
 resource "azurerm_network_security_rule" "nsg_ssh" {
-  name                         = "SSH"
-  priority                     = 200
+  count                        = local.instance_count
+  name                         = "SSH_${count.index}"
+  priority                     = "20${count.index}"
   direction                    = "Inbound"
   access                       = "Allow"
   protocol                     = "TCP"
   source_port_range            = "*"
-  destination_port_range       = "22"
+  destination_port_range       = "22${count.index}"
   source_address_prefix        = "*"
   destination_address_prefix   = "*"
   network_security_group_name  = azurerm_network_security_group.webserver.name
@@ -113,7 +114,7 @@ resource "azurerm_subnet_network_security_group_association" "example" {
 }
 
 resource "azurerm_lb" "load_balancer" {
-  name                = "${var.prefix}-lb"
+  name                = "${var.prefix}-LB"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
@@ -130,19 +131,21 @@ resource "azurerm_lb_backend_address_pool" "example" {
 }
 
 resource "azurerm_lb_nat_rule" "example" {
+  count                          = local.instance_count
   resource_group_name            = azurerm_resource_group.main.name
   loadbalancer_id                = azurerm_lb.load_balancer.id
-  name                           = "ssh"
+  name                           = "ssh${count.index}"
   protocol                       = "Tcp"
-  frontend_port                  = 22
+  frontend_port                  = "22${count.index}"
   backend_port                   = 22
   frontend_ip_configuration_name = "PublicIPAddress"
 }
 
 resource "azurerm_network_interface_nat_rule_association" "example" {
-  network_interface_id  = azurerm_network_interface.main.0.id
+  count                 = local.instance_count
+  network_interface_id  = element(azurerm_network_interface.main.*.id, count.index)
   ip_configuration_name = "primary"
-  nat_rule_id           = azurerm_lb_nat_rule.example.id
+  nat_rule_id           = element(azurerm_lb_nat_rule.example.*.id, count.index)
 }
 
 resource "azurerm_lb_rule" "lb_rule" {
